@@ -1,0 +1,6 @@
+# сборка makepkg
+*.pkg.tar.*
+pkg/
+src/
+__pycache__/
+*.pyc
