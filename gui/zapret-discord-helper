@@ -1,0 +1,126 @@
+#!/usr/bin/env bash
+# zapret-discord-helper — привилегированный помощник для Zapret Discord GUI.
+# Вызывается ТОЛЬКО через pkexec (polkit action io.github.zapret_discord_gui.helper).
+# Ничего не изобретает: обёртка над systemctl, service.sh адаптера Sergeydigl3,
+# scripts/zapret-install.sh и scripts/check.sh из пакета zapret-discord-arch. Все аргументы строго валидируются.
+#
+# Команды:
+#   start | stop | restart            systemctl <cmd> zapret_discord_youtube.service
+#   enable | disable                  автозапуск сервиса
+#   apply STRATEGY IFACE GT GU FB     service.sh config set ... -n, затем restart если сервис активен
+#                                     GT/GU = true|false, FB = auto|nftables|iptables
+#   service-install                   service.sh service install (нужен conf.env)
+#   service-remove                    service.sh service remove
+#   install-adapter STRATEGY IFACE    scripts/zapret-install.sh из пакета (вариант A)
+#   update-deps                       pacman-зависимости + service.sh download-deps --default
+#   check                             scripts/check.sh из пакета (диагностика)
+#   nft-status                        nft list table inet zapretunix
+#   logs [N]                          journalctl -u zapret_discord_youtube -b -n N
+#   disable-zapret2                   systemctl disable --now zapret2.service
+set -euo pipefail
+export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+export LC_ALL="${LC_ALL:-C.UTF-8}"
+
+ADAPTER_DIR="/opt/zapret-discord-youtube-linux"
+SHARE_DIR="/usr/share/zapret-discord-arch"
+SERVICE="zapret_discord_youtube.service"
+Z2_SERVICE="zapret2.service"
+UNIT_FILE="/etc/systemd/system/$SERVICE"
+DRY=0; TEST=0
+# Переопределения — только для тестов (моки) и только вне pkexec.
+if [[ -z ${PKEXEC_UID:-} && -n ${ZDG_TEST:-} ]]; then
+    TEST=1
+    ADAPTER_DIR="${ZDG_ADAPTER_DIR:-$ADAPTER_DIR}"
+    SHARE_DIR="${ZDG_SHARE_DIR:-$SHARE_DIR}"
+    UNIT_FILE="${ZDG_UNIT_FILE:-$UNIT_FILE}"
+    DRY="${ZDG_DRY:-0}"
+    [[ -n ${ZDG_MOCK_BIN:-} ]] && PATH="$ZDG_MOCK_BIN:$PATH"
+fi
+SCRIPTS_DIR="$SHARE_DIR/scripts"
+
+die() { echo "ОШИБКА: $*" >&2; exit 1; }
+run() { if [[ $DRY == 1 ]]; then echo "[dry] $*"; else "$@"; fi; }
+
+[[ $TEST == 1 || $EUID -eq 0 ]] || die "нужны права root (запускайте через pkexec)"
+
+need_adapter() { [[ -x $ADAPTER_DIR/service.sh ]] || die "адаптер не установлен: $ADAPTER_DIR/service.sh"; }
+svc() { ( cd "$ADAPTER_DIR" && run ./service.sh "$@" </dev/null ); }
+
+zapret2_busy() {
+    systemctl is-enabled --quiet "$Z2_SERVICE" 2>/dev/null || systemctl is-active --quiet "$Z2_SERVICE" 2>/dev/null
+}
+no_zapret2() { ! zapret2_busy || die "включён/запущен $Z2_SERVICE — сначала отключите его (вариант B), одновременно нельзя"; }
+
+valid_strategy() {
+    local s="$1"
+    [[ $s =~ ^[A-Za-z0-9._+-]+$ && $s == *.bat ]] || die "недопустимое имя стратегии: $s"
+    need_adapter
+    ( cd "$ADAPTER_DIR" && ./service.sh strategy list </dev/null ) | grep -qxF -- "$s" \
+        || die "стратегия $s не найдена (service.sh strategy list)"
+}
+valid_iface() {
+    local i="$1"
+    [[ $i == any ]] && return 0
+    [[ $i =~ ^[A-Za-z0-9._@:-]{1,15}$ && -e /sys/class/net/$i ]] || die "нет такого интерфейса: $i"
+}
+valid_bool() { [[ $1 == true || $1 == false ]] || die "ожидалось true|false: $1"; }
+valid_fb() { [[ $1 =~ ^(auto|nftables|iptables)$ ]] || die "недопустимый firewall_backend: $1"; }
+
+cmd="${1:-}"; shift || true
+case "$cmd" in
+    start|restart)
+        need_adapter; no_zapret2
+        [[ -f $UNIT_FILE ]] || die "сервис не установлен (кнопка «Установить сервис»)"
+        run systemctl "$cmd" "$SERVICE" ;;
+    stop)
+        run systemctl stop "$SERVICE" ;;
+    enable|disable)
+        [[ -f $UNIT_FILE ]] || die "сервис не установлен"
+        [[ $cmd == disable ]] || no_zapret2
+        run systemctl "$cmd" "$SERVICE" ;;
+    apply)
+        [[ $# -eq 5 ]] || die "apply STRATEGY IFACE GT GU FB"
+        valid_strategy "$1"; valid_iface "$2"; valid_bool "$3"; valid_bool "$4"; valid_fb "$5"
+        args=(config set "$1" "$2" -fb "$5" -n)
+        [[ $3 == true ]] && args+=(-gt)
+        [[ $4 == true ]] && args+=(-gu)
+        svc "${args[@]}"
+        if systemctl is-active --quiet "$SERVICE" 2>/dev/null; then
+            no_zapret2
+            echo "Перезапускаю $SERVICE ..."
+            run systemctl restart "$SERVICE"
+        fi ;;
+    service-install)
+        need_adapter; no_zapret2
+        [[ -f $ADAPTER_DIR/conf.env ]] || die "нет $ADAPTER_DIR/conf.env — сначала «Применить» настройки"
+        svc service install ;;
+    service-remove)
+        need_adapter
+        svc service remove ;;
+    install-adapter)
+        [[ $# -eq 2 ]] || die "install-adapter STRATEGY IFACE"
+        [[ $1 =~ ^[A-Za-z0-9._+-]+\.bat$ ]] || die "недопустимое имя стратегии: $1"
+        valid_iface "$2"
+        [[ -f $SCRIPTS_DIR/zapret-install.sh ]] || die "не найден $SCRIPTS_DIR/zapret-install.sh"
+        run bash "$SCRIPTS_DIR/zapret-install.sh" --strategy "$1" --iface "$2" </dev/null ;;
+    update-deps)
+        need_adapter
+        run pacman -S --needed --noconfirm git curl nftables grep sed procps-ng </dev/null
+        svc download-deps --default
+        if systemctl is-active --quiet "$SERVICE" 2>/dev/null; then
+            echo "Перезапускаю $SERVICE ..."
+            run systemctl restart "$SERVICE"
+        fi ;;
+    check)
+        [[ -f $SCRIPTS_DIR/check.sh ]] || die "не найден $SCRIPTS_DIR/check.sh"
+        bash "$SCRIPTS_DIR/check.sh" </dev/null ;;
+    nft-status)
+        nft list table inet zapretunix 2>&1 || echo "таблицы inet zapretunix нет" ;;
+    logs)
+        n="${1:-300}"; [[ $n =~ ^[0-9]{1,5}$ ]] || die "logs N"
+        journalctl -u "$SERVICE" -b -n "$n" --no-pager -o short-iso ;;
+    disable-zapret2)
+        run systemctl disable --now "$Z2_SERVICE" ;;
+    *)
+        sed -n '5,19p' "$0"; exit 2 ;;
+esac

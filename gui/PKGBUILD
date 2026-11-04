@@ -1,0 +1,50 @@
+# Maintainer: zapret-discord-arch contributors
+# Локальная сборка: ./install.sh в корне репозитория сам кладёт сюда (во временную папку)
+# файлы из gui/, scripts/ и conf/ и вызывает makepkg. Вручную: см. README, раздел «Ручная сборка».
+pkgname=zapret-discord-arch
+pkgver=1.0.0
+pkgrel=1
+pkgdesc="Zapret Discord for Arch: GTK4/libadwaita GUI + installer for zapret DPI bypass (nfqws, Flowseal strategies)"
+arch=('any')
+url="https://github.com/levks787-star/zapret-discord-arch"
+license=('MIT')
+depends=('python' 'python-gobject' 'gtk4' 'libadwaita>=1.5' 'polkit' 'systemd'
+         'iproute2' 'procps-ng' 'nftables' 'git' 'curl' 'grep' 'sed' 'bash')
+optdepends=('polkit-gnome: polkit agent for window managers without one (i3, sway, Hyprland)'
+            'lxqt-policykit: alternative polkit agent')
+provides=('zapret-discord-gui')
+conflicts=('zapret-discord-gui')
+replaces=('zapret-discord-gui')
+source=('zapret_discord_gui.py'
+        'zapret-discord-gui'
+        'zapret-discord-helper'
+        'io.github.zapret_discord_gui.policy'
+        'io.github.zapret_discord_gui.desktop'
+        'zapret-discord-gui.svg'
+        'zapret-install.sh'
+        'zapret-uninstall.sh'
+        'check.sh'
+        'nfqws2-discord.conf'
+        'zapret-hosts-user.txt'
+        'LICENSE')
+# Локальные файлы из этого же репозитория — контрольные суммы не фиксируем.
+sha256sums=('SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP')
+
+package() {
+    local lib="$pkgdir/usr/lib/$pkgname" share="$pkgdir/usr/share/$pkgname"
+    install -Dm644 zapret_discord_gui.py "$lib/zapret_discord_gui.py"
+    install -Dm755 zapret-discord-helper "$lib/zapret-discord-helper"
+    install -Dm755 zapret-discord-gui "$pkgdir/usr/bin/zapret-discord-gui"
+    install -Dm644 io.github.zapret_discord_gui.policy \
+        "$pkgdir/usr/share/polkit-1/actions/io.github.zapret_discord_gui.policy"
+    install -Dm644 io.github.zapret_discord_gui.desktop \
+        "$pkgdir/usr/share/applications/io.github.zapret_discord_gui.desktop"
+    install -Dm644 zapret-discord-gui.svg "$pkgdir/usr/share/icons/hicolor/scalable/apps/zapret-discord-gui.svg"
+    # ядро установки (кнопки «Установить» / «Проверить» в GUI через helper)
+    install -Dm755 zapret-install.sh     "$share/scripts/zapret-install.sh"
+    install -Dm755 zapret-uninstall.sh   "$share/scripts/zapret-uninstall.sh"
+    install -Dm755 check.sh              "$share/scripts/check.sh"
+    install -Dm644 nfqws2-discord.conf   "$share/conf/zapret2/nfqws2-discord.conf"
+    install -Dm644 zapret-hosts-user.txt "$share/conf/zapret2/zapret-hosts-user.txt"
+    install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}

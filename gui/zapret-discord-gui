@@ -1,0 +1,2 @@
+#!/bin/sh
+exec /usr/bin/python3 /usr/lib/zapret-discord-arch/zapret_discord_gui.py "$@"

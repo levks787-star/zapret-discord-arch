@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+Name=Zapret Discord
+Name[ru]=Zapret Discord
+GenericName=DPI bypass for Discord
+GenericName[ru]=Обход DPI для Discord
+Comment=Turn zapret on/off and switch strategies
+Comment[ru]=Включение zapret и переключение стратегий обхода блокировок Discord
+Exec=zapret-discord-gui
+Icon=zapret-discord-gui
+Terminal=false
+Categories=Network;GTK;
+Keywords=zapret;discord;dpi;nfqws;youtube;
+StartupNotify=true
