@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Сам движок nfqws (bol-van/zapret)
+    url: https://github.com/bol-van/zapret/issues
+    about: Ошибки самого nfqws — туда, а не сюда
+  - name: Стратегии (Flowseal/zapret-discord-youtube)
+    url: https://github.com/Flowseal/zapret-discord-youtube
+    about: Стратегии general*.bat пишет Flowseal
