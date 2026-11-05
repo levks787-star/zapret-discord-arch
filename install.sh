@@ -68,11 +68,11 @@ remove_old_gui() {
     # прежние сборки под именем zapret-discord-gui (pacman или --direct)
     if pacman -Qq "$OLD_PKG" >/dev/null 2>&1; then
         msg "Удаляю старый пакет $OLD_PKG (заменяется на $PKG)"
-        "${SUDO[@]}" pacman -R --noconfirm "$OLD_PKG"
+        "${SUDO[@]}" pacman -R --noconfirm "$OLD_PKG" || warn "не удалось удалить $OLD_PKG — продолжаю"
     fi
     if [[ -e /usr/lib/$OLD_PKG ]] && ! pacman -Qo "/usr/lib/$OLD_PKG" >/dev/null 2>&1; then
         msg "Удаляю старую direct-установку /usr/lib/$OLD_PKG"
-        "${SUDO[@]}" rm -rf "/usr/lib/$OLD_PKG" "/usr/share/$OLD_PKG"
+        "${SUDO[@]}" rm -rf "/usr/lib/$OLD_PKG" "/usr/share/$OLD_PKG" || true
     fi
 }
 
